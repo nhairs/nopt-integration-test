@@ -4,5 +4,5 @@ from nopt_integration_test import VALUE
 
 
 def test_package() -> None:
-    """Keep the distribution's import independent of its TestPyPI name suffix."""
+    """Check the integration package installed in the test environment."""
     assert VALUE == "nopt integration fixture"

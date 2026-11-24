@@ -97,6 +97,28 @@ def test_testpypi_build_restores_source(project: Path, tmp_path: Path) -> None:
     assert all("fixture_user-1.2.3.dev4" in path.name for path in distributions)
     assert (bundle / "release.json").is_file()
     assert (bundle / "SHA256SUMS").is_file()
+    wheel = next((bundle / "dist").glob("*.whl"))
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import fixture_package; print(fixture_package.VALUE)",
+            str(wheel),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert imported.stdout.strip() == "fixture"
+    result = nopt(project, "publish-release-preflight", "--bundle", str(bundle))
+    assert result.returncode == 0, result.stdout + result.stderr
+    checked_identity = json.loads(result.stdout)
+    assert checked_identity["distribution_name"] == manifest["distribution_name"]
+    assert checked_identity["version"] == "1.2.3.dev4"
+    assert checked_identity["tag"] == "v1.2.3.dev4"
 
 
 def test_noncanonical_version_is_rejected(project: Path, tmp_path: Path) -> None:

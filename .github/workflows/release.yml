@@ -2,7 +2,7 @@
 name: Publish release
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,8 +21,7 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - run: python scripts/check_testpypi.py
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt ci-preflight --repository testpypi
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt ci-preflight
         env:
           GH_TOKEN: ${{ github.token }}
   ci:
@@ -52,7 +51,7 @@ jobs:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - id: build
-        run: uvx --from 'nopt==0.1.0.dev0' nopt build --repository testpypi --output "$RUNNER_TEMP/release-bundle"
+        run: uvx --from 'nopt==0.1.0.dev0' nopt build --output "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -65,7 +64,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi # This environment publishes only to TestPyPI; no human deployment approval.
+    environment: testpypi
     permissions:
       contents: read
       id-token: write
@@ -79,7 +78,7 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --repository testpypi --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Copy verified distributions for upload and attestation generation
@@ -110,6 +109,6 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-github-release --repository testpypi --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
