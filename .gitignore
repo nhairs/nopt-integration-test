@@ -8,4 +8,3 @@ build/
 dist/
 release-bundle/
 uv.lock
-scenario-results.xml

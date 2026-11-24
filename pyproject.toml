@@ -16,7 +16,7 @@ license-files = ["LICENCE"]
 GitHub = "https://github.com/nhairs/nopt-integration-test"
 
 [dependency-groups]
-dev = ["pytest>=8", "black", "pylint", "pyrefly", "validate-pyproject[all]", "tox>=4", "tox-uv", "build", "nopt==0.1.0.dev0"]
+dev = ["pytest>=8", "black", "pylint", "pyrefly", "validate-pyproject[all]", "tox>=4", "tox-uv", "build"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

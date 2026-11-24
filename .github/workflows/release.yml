@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - run: uvx --python 3.13 --from 'nopt==0.1.0.dev0' nopt ci-preflight
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt ci-preflight
         env:
           GH_TOKEN: ${{ github.token }}
   ci:
@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - id: build
-        run: uvx --python 3.13 --from 'nopt==0.1.0.dev0' nopt build --output "$RUNNER_TEMP/release-bundle"
+        run: uvx --from 'nopt==0.1.0.dev0' nopt build --output "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -60,10 +60,9 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --python 3.13 --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
-      # Attestations may add files to this disposable download; the stored artifact stays unchanged.
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: ${{ runner.temp }}/release-bundle/dist/
@@ -87,6 +86,6 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --python 3.13 --from 'nopt==0.1.0.dev0' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
