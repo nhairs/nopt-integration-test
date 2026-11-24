@@ -1,0 +1,3 @@
+# Activate code-owner review in the main-branch rules to enforce these reviews.
+/AGENTS.md @nhairs
+/.github/CODEOWNERS @nhairs
