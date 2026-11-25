@@ -1,8 +1,8 @@
 # Keep the nopt version and action commit pins consistent across all jobs.
-name: Publish release
+name: T0078 publication failure probe
 on:
   push:
-    tags: ['v*.*.*']
+    tags: ['"v0.1.2.dev4"']
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,6 +11,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
+    if: >-
+      github.repository == 'nhairs/nopt-integration-test' && github.ref_type == 'tag' &&
+      github.ref_name == 'v0.1.2.dev0'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -18,7 +21,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt ci-preflight
+      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt ci-preflight
         env:
           GH_TOKEN: ${{ github.token }}
   ci:
@@ -36,7 +39,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - id: build
-        run: uvx --from 'nopt==0.1.0.dev0' nopt build --output "$RUNNER_TEMP/release-bundle"
+        run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt build --output "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -60,13 +63,40 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
+      - name: Stop attempt 1 before TestPyPI upload
+        if: github.ref_name == 'v0.1.2.dev0' && github.run_attempt == 1
+        run: |
+          echo "T0078 intentional failure before index upload"
+          exit 1
+      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Stage only the original wheel
+        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        run: |
+          shopt -s nullglob
+          wheels=("$RUNNER_TEMP"/release-bundle/dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          mkdir "$RUNNER_TEMP/testpypi-wheel"
+          cp "${wheels[0]}" "$RUNNER_TEMP/testpypi-wheel/"
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        if: github.ref_name != 'v0.1.2.dev0' && github.run_attempt == 1
         with:
-          packages-dir: ${{ runner.temp }}/release-bundle/dist/
+          packages-dir: ${{ runner.temp }}/${{ github.ref_name == 'v0.1.2.dev1' && 'testpypi-wheel' || 'release-bundle/dist' }}/
           repository-url: https://test.pypi.org/legacy/
+      - name: Wait for the partial TestPyPI record
+        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
+            --output /dev/null https://test.pypi.org/pypi/nopt-integration-test-nhairs-test/0.1.2.dev1/json
+      - name: Probe the index absence check after the one-file upload
+        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
+          echo "T0078 unexpected preflight success after partial publication"
+          exit 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -76,6 +106,7 @@ jobs:
           if-no-files-found: warn
   github-release:
     needs: [build, publish]
+    if: github.ref_name == 'v0.1.2.dev2' || github.ref_name == 'v0.1.2.dev3' || github.ref_name == 'v0.1.2.dev4'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,6 +117,41 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
+      - name: Verify GitHub finalization without writes
+        if: github.ref_name != 'v0.1.2.dev3' || github.run_attempt != 1
         env:
           GH_TOKEN: ${{ github.token }}
+        run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle" --check-only
+      - name: Stop before the first GitHub release write
+        if: github.ref_name == 'v0.1.2.dev2' && github.run_attempt == 1
+        run: |
+          echo "T0078 intentional failure before GitHub release writes"
+          exit 1
+      - name: Simulate an interrupted draft after one asset
+        if: github.ref_name == 'v0.1.2.dev4' && github.run_attempt == 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --draft --prerelease --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release-bundle/release-notes.md"
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP"/release-bundle/dist/*.whl \
+            --repo "$GITHUB_REPOSITORY"
+      - name: Probe finalization with an existing draft
+        if: github.ref_name == 'v0.1.2.dev4' && github.run_attempt == 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle" --check-only
+          echo "T0078 unexpected finalization check success with an existing draft"
+          exit 1
+      - name: Finalize the GitHub release
+        if: github.ref_name == 'v0.1.2.dev3' && github.run_attempt == 1
+        run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Simulate an uncertain result after successful GitHub publication
+        if: github.ref_name == 'v0.1.2.dev3' && github.run_attempt == 1
+        run: |
+          echo "T0078 intentional failure after GitHub publication"
+          exit 1
