@@ -2,7 +2,7 @@
 name: T0078 read-only rerun verification
 on:
   push:
-    tags: ['v0.1.2.dev9']
+    tags: ['v0.1.2.dev10']
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: github.repository == 'nhairs/nopt-integration-test' && github.ref == 'refs/tags/v0.1.2.dev9'
+    if: github.repository == 'nhairs/nopt-integration-test' && github.ref == 'refs/tags/v0.1.2.dev10'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@0390fc95dacdfb2a747cfb909821871f5cbe93f5' nopt ci-preflight
+      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@3e578dfa72fab6e61520bf86c95e0d1b3a189777' nopt ci-preflight
         env:
           GH_TOKEN: ${{ github.token }}
   ci:
@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - id: build
-        run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@0390fc95dacdfb2a747cfb909821871f5cbe93f5' nopt build --output "$RUNNER_TEMP/release-bundle"
+        run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@3e578dfa72fab6e61520bf86c95e0d1b3a189777' nopt build --output "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -62,25 +62,6 @@ jobs:
         run: |
           echo "T0078 intentional publish stop before the attempt-2 probe"
           exit 1
-      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@0390fc95dacdfb2a747cfb909821871f5cbe93f5' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
-        env:
-          GH_TOKEN: ${{ github.token }}
-  github-release:
-    needs: [build, publish]
-    if: github.run_attempt == 2 || github.run_attempt == 3
-    runs-on: ubuntu-latest
-    steps:
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          artifact-ids: ${{ needs.build.outputs.artifact_id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/release-bundle
-      - name: Stop after download on attempt 2
-        if: github.run_attempt == 2
-        run: |
-          echo "T0078 intentional GitHub stop before the attempt-3 probe"
-          exit 1
-      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@0390fc95dacdfb2a747cfb909821871f5cbe93f5' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle" --check-only
+      - run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@3e578dfa72fab6e61520bf86c95e0d1b3a189777' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
