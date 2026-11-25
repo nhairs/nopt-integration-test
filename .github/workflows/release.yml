@@ -2,7 +2,7 @@
 name: T0078 publication failure probe
 on:
   push:
-    tags: ['"v0.1.2.dev1"']
+    tags: ['v0.1.2.dev5']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
   preflight:
     if: >-
       github.repository == 'nhairs/nopt-integration-test' && github.ref_type == 'tag' &&
-      github.ref_name == 'v0.1.2.dev0'
+      github.ref_name == 'v0.1.2.dev5'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -72,7 +72,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Stage only the original wheel
-        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev5' && github.run_attempt == 1
         run: |
           shopt -s nullglob
           wheels=("$RUNNER_TEMP"/release-bundle/dist/*.whl)
@@ -82,15 +82,15 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         if: github.ref_name != 'v0.1.2.dev0' && github.run_attempt == 1
         with:
-          packages-dir: ${{ runner.temp }}/${{ github.ref_name == 'v0.1.2.dev1' && 'testpypi-wheel' || 'release-bundle/dist' }}/
+          packages-dir: ${{ runner.temp }}/${{ github.ref_name == 'v0.1.2.dev5' && 'testpypi-wheel' || 'release-bundle/dist' }}/
           repository-url: https://test.pypi.org/legacy/
       - name: Wait for the partial TestPyPI record
-        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev5' && github.run_attempt == 1
         run: |
           curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
-            --output /dev/null https://test.pypi.org/pypi/nopt-integration-test-nhairs-test/0.1.2.dev1/json
+            --output /dev/null https://test.pypi.org/pypi/nopt-integration-test-nhairs-test/0.1.2.dev5/json
       - name: Probe the index absence check after the one-file upload
-        if: github.ref_name == 'v0.1.2.dev1' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev5' && github.run_attempt == 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -106,7 +106,7 @@ jobs:
           if-no-files-found: warn
   github-release:
     needs: [build, publish]
-    if: github.ref_name == 'v0.1.2.dev2' || github.ref_name == 'v0.1.2.dev3' || github.ref_name == 'v0.1.2.dev4'
+    if: github.ref_name == 'v0.1.2.dev6' || github.ref_name == 'v0.1.2.dev7' || github.ref_name == 'v0.1.2.dev8'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -118,17 +118,17 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
       - name: Verify GitHub finalization without writes
-        if: github.ref_name != 'v0.1.2.dev3' || github.run_attempt != 1
+        if: github.ref_name != 'v0.1.2.dev7' || github.run_attempt != 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle" --check-only
       - name: Stop before the first GitHub release write
-        if: github.ref_name == 'v0.1.2.dev2' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev6' && github.run_attempt == 1
         run: |
           echo "T0078 intentional failure before GitHub release writes"
           exit 1
       - name: Simulate an interrupted draft after one asset
-        if: github.ref_name == 'v0.1.2.dev4' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev8' && github.run_attempt == 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -138,7 +138,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP"/release-bundle/dist/*.whl \
             --repo "$GITHUB_REPOSITORY"
       - name: Probe finalization with an existing draft
-        if: github.ref_name == 'v0.1.2.dev4' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev8' && github.run_attempt == 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -146,12 +146,12 @@ jobs:
           echo "T0078 unexpected finalization check success with an existing draft"
           exit 1
       - name: Finalize the GitHub release
-        if: github.ref_name == 'v0.1.2.dev3' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev7' && github.run_attempt == 1
         run: uvx --from 'nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@00a65c300a309d2b5520c6db0249360a5f248cec' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Simulate an uncertain result after successful GitHub publication
-        if: github.ref_name == 'v0.1.2.dev3' && github.run_attempt == 1
+        if: github.ref_name == 'v0.1.2.dev7' && github.run_attempt == 1
         run: |
           echo "T0078 intentional failure after GitHub publication"
           exit 1
