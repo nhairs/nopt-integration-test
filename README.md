@@ -37,8 +37,11 @@ use the requirement from the tagged commit's `.nopt-requirement` file. The
 workflow publishes only `nopt-integration-test-nhairs-test` to TestPyPI through
 the unattended `testpypi` environment.
 
-The default suite starts with the next unused pair of major series. For a
-fixture with only `0.x` versions, it uses the following versions.
+The default suite picks two new major series above the versions it finds in
+`main`, the changelog, remote tags, maintenance branches, GitHub releases and
+drafts, and TestPyPI. Before pushing each tag, the runner checks that its exact
+version is still unused. The examples below assume the fixture has used only
+the `0.x` series.
 
 | Scenario | Example | Evidence required to pass |
 | --- | --- | --- |

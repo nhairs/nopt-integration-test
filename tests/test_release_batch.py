@@ -21,6 +21,22 @@ spec.loader.exec_module(batch)
 EMPTY = {"testpypi": {"status": 404}, "github": []}
 
 
+@pytest.mark.parametrize(
+    ("main_version", "changelog", "refs", "published", "expected"),
+    [
+        ("10.8.1rc2", "", "", [], ("10.8.2", 11)),
+        ("9.9.9", "## [10.0.0] - UNRELEASED", "", [], ("10.0.1", 11)),
+        ("9.9.9", "", "abc\trefs/tags/v10.0.3.dev1", [], ("10.0.4", 11)),
+        ("9.9.9", "", "abc\trefs/heads/release/10.x", [], ("9.9.10", 11)),
+        ("9.9.9", "", "", ["10.2.0"], ("10.2.1", 11)),
+    ],
+)
+def test_version_floors_follow_existing_versions(
+    main_version, changelog, refs, published, expected
+):
+    assert batch.version_floors(main_version, changelog, refs, published) == expected
+
+
 def test_allocate_version_skips_remote_tags():
     probe = Mock(return_value=EMPTY)
     assert batch.allocate_version("2.0.1", {"v2.0.1.dev0"}.__contains__, probe) == (
@@ -244,7 +260,10 @@ def test_maintenance_commit_keeps_workflow_and_dates_final(monkeypatch, tmp_path
     assert (tmp_path / batch.PIN_FILE).read_text().strip() == requirement
 
 
-def test_release_batch_uses_maintenance_ancestry_and_preserves_main(monkeypatch, tmp_path):
+@pytest.mark.parametrize(("draft_major", "index_major"), [(26, 27), (27, 26)])
+def test_release_batch_uses_maintenance_ancestry_and_preserves_main(
+    monkeypatch, tmp_path, draft_major, index_major
+):
     remote = tmp_path / "remote"
     remote.mkdir()
     git = batch.git
@@ -260,9 +279,22 @@ def test_release_batch_uses_maintenance_ancestry_and_preserves_main(monkeypatch,
         dest = remote / name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(fixture / name, dest)
+    project_file = remote / "pyproject.toml"
+    project_file.write_text(
+        re.sub(r'^version = "[^"]+"$', 'version = "21.4.8"', project_file.read_text(), flags=re.M),
+        encoding="utf-8",
+    )
+    changelog = remote / "docs/changelog.md"
+    changelog.write_text("# Changelog\n\n## [22.1.0] - UNRELEASED\n\n- Manual fixture test.\n")
     git("add", "--", *files, cwd=remote)
     git("commit", "-m", "Fixture main", cwd=remote)
     main = git("rev-parse", "HEAD", cwd=remote)
+    manual_tag = "v24.9.0rc1"
+    manual_branch = "release/25.x"
+    git("tag", manual_tag, cwd=remote)
+    git("branch", manual_branch, cwd=remote)
+    first_major = max(draft_major, index_major) + 1
+    latest = {}
 
     def snapshot(scenario, key, _save):
         scenario[key] = {} if scenario["name"] == "duplicate-version" else EMPTY.copy()
@@ -271,11 +303,16 @@ def test_release_batch_uses_maintenance_ancestry_and_preserves_main(monkeypatch,
     def verify(scenario, _timeout, _save):
         assert batch.remote_tag(scenario["tag"]) == scenario["commit"]
         scenario.update(after={}, asset_sha256={}, result="passed")
+        if scenario["name"] in {"first-final", "new-major-final"}:
+            latest["tag_name"] = scenario["tag"]
 
     dispatch = Mock()
     monkeypatch.setattr(batch, "snapshot", snapshot)
     monkeypatch.setattr(batch, "verify", verify)
-    monkeypatch.setattr(batch, "latest_release", lambda: {"tag_name": "v2.0.0"})
+    monkeypatch.setattr(batch, "latest_release", lambda: latest.copy())
+    monkeypatch.setattr(batch, "testpypi_versions", lambda: [f"{index_major}.1.0"])
+    github_releases = Mock(return_value=[{"tag_name": f"v{draft_major}.0.0", "draft": True}])
+    monkeypatch.setattr(batch, "page_items", github_releases)
     original_command = batch.command
 
     def command(*args, **kwargs):
@@ -287,21 +324,27 @@ def test_release_batch_uses_maintenance_ancestry_and_preserves_main(monkeypatch,
     report = {"suite": "release", "nopt_requirement": "nopt==0.2.0", "scenarios": []}
     batch.run_batch(report, 5, False, lambda: None)
     first, new, rc, patch, missing, duplicate = report["scenarios"]
+    expected_latest = f"v{first_major + 1}.0.0"
     assert [item["tag"] for item in (first, new, rc, patch, missing, duplicate)] == [
-        "v1.0.0",
-        "v2.0.0",
-        "v1.0.1rc1",
-        "v1.0.1",
-        "v1.0.2",
-        "v2.0.0",
+        f"v{first_major}.0.0",
+        expected_latest,
+        f"v{first_major}.0.1rc1",
+        f"v{first_major}.0.1",
+        f"v{first_major}.0.2",
+        expected_latest,
     ]
     assert git("rev-parse", "refs/heads/main", cwd=remote) == main
-    assert git("rev-parse", "refs/tags/v1.0.1rc1^", cwd=remote) == first["commit"]
-    assert git("rev-parse", "refs/tags/v1.0.1^", cwd=remote) == rc["commit"]
-    assert git("rev-parse", "refs/heads/release/1.x", cwd=remote) == patch["commit"]
-    assert git("rev-parse", "refs/tags/v1.0.2^", cwd=remote) == patch["commit"]
+    assert git("rev-parse", f"refs/tags/{manual_tag}", cwd=remote) == main
+    assert git("rev-parse", f"refs/heads/{manual_branch}", cwd=remote) == main
+    assert git("rev-parse", f"refs/tags/{rc['tag']}^", cwd=remote) == first["commit"]
+    assert git("rev-parse", f"refs/tags/{patch['tag']}^", cwd=remote) == rc["commit"]
+    assert git("rev-parse", f"refs/heads/release/{first_major}.x", cwd=remote) == patch["commit"]
+    assert git("rev-parse", f"refs/tags/{missing['tag']}^", cwd=remote) == patch["commit"]
     assert missing["branch"] != patch["branch"]
-    assert {item["expected_latest"] for item in (rc, patch, missing, duplicate)} == {"v2.0.0"}
+    assert {item["expected_latest"] for item in (rc, patch, missing, duplicate)} == {
+        expected_latest
+    }
+    github_releases.assert_called_once_with("releases?per_page=100")
     dispatch.assert_called_once_with(
-        "gh", "workflow", "run", "release.yml", "--repo", batch.REPO, "--ref", "v2.0.0"
+        "gh", "workflow", "run", "release.yml", "--repo", batch.REPO, "--ref", expected_latest
     )

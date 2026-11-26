@@ -16,7 +16,7 @@ import time
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
@@ -24,6 +24,7 @@ REPO = "nhairs/nopt-integration-test"
 REMOTE = f"https://github.com/{REPO}.git"
 NOPT = "https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool"
 DIST = "nopt-integration-test-nhairs-test"
+TESTPYPI = "https://test.pypi.org"
 WORKFLOW = ".github/workflows/release.yml"
 PIN_FILE = ".nopt-requirement"
 DEV_SCENARIOS = ("successful-dev", "missing-changelog", "duplicate-version")
@@ -77,16 +78,29 @@ def page_items(path, key=None, *, timeout=60):
     return [item for page in pages for item in (page if key is None else page[key])]
 
 
-def testpypi(version):
-    url = f"https://test.pypi.org/pypi/{DIST}/{version}/json"
+def testpypi_json(url, accept="application/json"):
     try:
-        with urlopen(url, timeout=20) as response:
+        with urlopen(Request(url, headers={"Accept": accept}), timeout=20) as response:
             require(response.status == 200, f"Unexpected TestPyPI status {response.status}")
             data = json.load(response)
     except HTTPError as error:
         if error.code == 404:
-            return {"url": url, "status": 404}
+            return None
         raise BatchError(f"TestPyPI returned HTTP {error.code} for {url}") from error
+    require(isinstance(data, dict), f"Expected a TestPyPI JSON object from {url}")
+    return data
+
+
+def testpypi_versions():
+    data = testpypi_json(f"{TESTPYPI}/simple/{DIST}/", "application/vnd.pypi.simple.v1+json")
+    return data["versions"] if data is not None else []
+
+
+def testpypi(version):
+    url = f"{TESTPYPI}/pypi/{DIST}/{version}/json"
+    data = testpypi_json(url)
+    if data is None:
+        return {"url": url, "status": 404}
     return {
         "url": url,
         "status": 200,
@@ -555,6 +569,19 @@ def check_duplicate(scenario):
     require(hashes == scenario["baseline_asset_sha256"], "Duplicate run changed GitHub asset bytes")
 
 
+def version_floors(project_version, changelog, refs, published_versions):
+    """Choose a new dev base and the first unused final series from observed versions."""
+    known = [project_version, *published_versions]
+    known.extend(re.findall(rf"^## \[({BASE_VERSION})\]", changelog, flags=re.M))
+    known.extend(re.findall(rf"\trefs/tags/v({BASE_VERSION})", refs))
+    bases = (re.match(BASE_VERSION, version) for version in known)
+    major, minor, patch = max(tuple(map(int, match.group().split("."))) for match in bases if match)
+    maintenance_majors = [
+        int(value) for value in re.findall(r"\trefs/heads/release/([0-9]+)\.", refs)
+    ]
+    return f"{major}.{minor}.{patch + 1}", max([major, *maintenance_majors]) + 1
+
+
 def release_plan(major, branch):
     """Schedule newer finals before the older series' prerelease and patch release."""
     old, new = f"{major}.0.0", f"{major + 1}.0.0"
@@ -694,17 +721,15 @@ def run_batch(report, timeout, dispatch, save):
         refs = git("ls-remote", "--refs", REMOTE, "refs/tags/v*", "refs/heads/release/*")
         changelog = (tree / "docs/changelog.md").read_text(encoding="utf-8")
         config = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))
-        known = re.findall(rf"refs/tags/v({BASE_VERSION})", refs)
-        known += re.findall(rf"^## \[({BASE_VERSION})\]", changelog, flags=re.M)
-        known.append(re.match(BASE_VERSION, config["project"]["version"]).group())
-        major, minor, patch = max(tuple(map(int, version.split("."))) for version in known)
-        dev_base = f"{major}.{minor}.{patch + 1}"
+        # A draft or an index upload can exist without a corresponding Git tag.
+        release_versions = [
+            release["tag_name"].removeprefix("v") for release in page_items("releases?per_page=100")
+        ]
+        dev_base, next_major = version_floors(
+            config["project"]["version"], changelog, refs, [*release_versions, *testpypi_versions()]
+        )
 
         if report["suite"] == "release":
-            maintenance_majors = [
-                int(value) for value in re.findall(r"refs/heads/release/([0-9]+)\.", refs)
-            ]
-            next_major = max([major, *maintenance_majors]) + 1
             plan = release_plan(next_major, f"batch/{uuid4().hex[:12]}/main")
         else:
             plan = [{"name": name} for name in DEV_SCENARIOS]
