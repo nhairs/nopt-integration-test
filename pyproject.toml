@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nopt-integration-test"
-version = "0.1.0.dev0"
+version = "0.1.4.dev0"
 description = "TestPyPI-only integration fixture for nopt"
 requires-python = ">=3.11"
 authors = [{name = "Nicholas Hairs", email = "info+nopt@nicholashairs.com"}]
