@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nopt-integration-test"
-version = "0.1.0.dev0"
+version = "1.0.0"
 description = "TestPyPI-only integration fixture for nopt"
 requires-python = ">=3.11"
 authors = [{name = "Nicholas Hairs", email = "info+nopt@nicholashairs.com"}]
@@ -37,6 +37,7 @@ max-line-length = 100
 disable = ["useless-return"]
 
 [tool.nopt]
+final-release-branches = ["batch/ba58a44cbc21/main"]
 repository = "testpypi"
 testpypi-username = "nhairs-test"
 github-release-types = ["dev", "pre", "final"]
