@@ -18,76 +18,90 @@ Tox covers CPython 3.11–3.15 and PyPy 3.11–3.12. The package uses setuptools
 
 ## Run live release tests
 
-Drive the fixture from a local shell or an external runner. Each scenario invokes
-the fixture's `release.yml` workflow. The runner selects refs, waits for completion,
-checks GitHub and TestPyPI, and records the results. Nopt's own test suite covers
-individual CLI behaviors.
+Run the batch from a local shell with Python 3.11 or later, Git, and an
+authenticated GitHub CLI. Use a credential with push access to
+`nhairs/nopt-integration-test` that can push tags, dispatch workflows, and read
+Actions runs, job logs, artifacts, and GitHub releases including drafts. Configure
+Git's GitHub credentials with `gh auth setup-git` if needed. The runner was tested
+with GitHub CLI 2.102.0.
 
-The fixture publishes `nopt-integration-test-nhairs-test` to TestPyPI using the
-unattended `testpypi` environment and the trusted publisher for
-`nhairs/nopt-integration-test` and `release.yml`. The first live run verified this
-setup. [First fixture release run](https://github.com/nhairs/nopt-integration-test/actions/runs/45346623820)
-
-### Prepare the batch
-
-1. Use Git and an authenticated GitHub CLI with permission to push fixture
-   branches and tags, dispatch Actions runs, and read runs, logs, artifacts and
-   releases. If the runner is another repository's workflow, use credentials
-   scoped to the fixture repository. A run in the caller repository uses a
-   repository-scoped `GITHUB_TOKEN`.
-2. Start a fixture branch from `main`. Set the same nopt requirement in all four
-   commands in `.github/workflows/release.yml`. Use a published version such as
-   `nopt==0.1.0` or a full candidate commit in
-   `nopt @ git+https://github.com/nhairs/nicks-opinionated-python-package-publishing-tool@COMMIT`.
-3. For each scenario with a new version, choose an unused canonical dev
-   version. Commit the version and scenario changes on a fixture test branch.
-   Check the remote tag and GitHub release are absent and the
-   `https://test.pypi.org/pypi/nopt-integration-test-nhairs-test/VERSION/json`
-   endpoint returns HTTP 404. Stop on any other result. Use a matching nonempty
-   `UNRELEASED` changelog section unless the scenario calls for changing it.
-   Follow the repository's [agent instructions](AGENTS.md) for test refs and
-   publish only to TestPyPI.
-
-### Exercise the workflow
-
-| Scenario | Fixture input | Expected outcome |
-| --- | --- | --- |
-| Successful dev release | Tag the valid commit with `v<project.version>`. | Preflight, fixture CI, build and both publishing jobs succeed. TestPyPI contains one wheel and one sdist. GitHub has a published prerelease for the tag with the same filenames and SHA-256 hashes. Both Actions artifacts exist. |
-| Missing changelog section | Use another unused dev version. Leave the changelog enabled and omit the matching base-version heading. Tag the commit with `v<project.version>`. | The `preflight` job fails with `expected exactly one changelog section for <base-version>`. CI, build and publishing are skipped. TestPyPI still returns 404, and GitHub has no release or draft for the tag. |
-| Already-published version | After the successful run, record its TestPyPI file hashes and GitHub release ID and assets. Dispatch `release.yml` at that existing tag to exercise the duplicate-version check. | The `preflight` job fails with `testpypi already has a record for nopt-integration-test-nhairs-test <version>`. CI, build and publishing are skipped. The TestPyPI file hashes and GitHub release ID and assets match the recorded values. |
-
-For a normal tag-triggered run, push the new tag once. For the duplicate-version
-case or a tag push performed with Actions' `GITHUB_TOKEN`, dispatch at the
-existing tag:
+From the repository root, run the batch with a published nopt version.
 
 ```sh
-gh workflow run release.yml --repo nhairs/nopt-integration-test --ref TAG
+python scripts/release_batch.py --nopt 0.2.0 --output ./batch-0.2.0
 ```
 
-Replace `TAG` with the exact test tag. Use a new workflow dispatch for the
-duplicate-version case. Preserve the successful tag and uploads.
+To test a nopt candidate, pass its full 40-character commit SHA to `--nopt`.
+The runner starts from the fixture's current `main`. All four workflow commands
+use the requirement from the tagged commit's `.nopt-requirement` file. The
+workflow publishes only `nopt-integration-test-nhairs-test` to TestPyPI through
+the unattended `testpypi` environment.
 
-### Verify and retain results
+The default suite picks two new major series above the versions it finds in
+`main`, the changelog, remote tags, maintenance branches, GitHub releases and
+drafts, and TestPyPI. Before pushing each tag, the runner checks that its exact
+version is still unused. The examples below assume the fixture has used only
+the `0.x` series.
 
-1. Find the run of `release.yml` by tag, commit, event and creation time. Use
-   `gh run list --workflow release.yml --repo nhairs/nopt-integration-test` to
-   locate it, then `gh run watch RUN_ID --repo nhairs/nopt-integration-test` to
-   wait for completion. Replace `RUN_ID` with the run's numeric ID.
-2. Inspect the jobs with
-   `gh run view RUN_ID --repo nhairs/nopt-integration-test --json jobs`. For an
-   expected failure, inspect the failed job's logs for the stated diagnostic.
-   A failed run without that job and diagnostic is a failed test.
-3. Read TestPyPI release JSON and GitHub release metadata. For success, compare
-   each distribution's SHA-256 with the GitHub release asset digest or download
-   the asset and hash it. For negative cases, verify the expected external
-   state, including draft absence where applicable. Check job outputs or ZIP
-   artifact metadata for the original release bundle and publication evidence.
-4. Record the tested nopt version or commit, fixture commit and tag, workflow
-   run URL and attempt, job conclusions and diagnostics, artifact IDs and
-   external state. Preserve published tags and versions. If a live run fails
-   unexpectedly, inspect its publication state and retain its evidence before
-   creating another batch.
+| Scenario | Example | Evidence required to pass |
+| --- | --- | --- |
+| First final | `v1.0.0` | GitHub marks the first final as latest. |
+| New major final | `v2.0.0` | GitHub moves latest to the new major. |
+| Maintenance prerelease | `v1.0.1rc1` | The runner branches from `v1.0.0` to `release/1.x` and exercises nopt's `release/1.*` branch selector. GitHub publishes a prerelease and keeps `v2.0.0` as latest. |
+| Maintenance final | `v1.0.1` | A final release on `release/1.x` uses a dated changelog entry and keeps `v2.0.0` as latest. |
+| Missing changelog section | `v1.0.2` | Preflight reports `expected exactly one changelog section for 1.0.2`. CI, build, and publication skip. The exact TestPyPI version returns HTTP 404 and GitHub has no release or draft for the tag. |
+| Duplicate version | Dispatch at `v2.0.0` | Preflight reports that TestPyPI already records the version. CI, build, and publication skip. TestPyPI files and hashes and GitHub release and asset IDs and hashes match the original release. |
 
-Use the same procedure for a future batch controller. It can allocate versions,
-trigger runs, verify the scenario-specific outcomes and record evidence without
-changes to the release workflow.
+The runner uses a disposable mainline branch for the first two finals. For each
+successful scenario, all eight jobs must pass. The TestPyPI wheel and sdist must
+match the downloaded GitHub assets, `SHA256SUMS`, and the original build
+manifest. Both distributions must embed the tagged commit. The report includes
+the manifest checksum, release notes, and two Actions artifact IDs.
+
+For the three-scenario development suite, add `--suite dev`. It tests a
+successful dev release, missing changelog, and duplicate version.
+
+If Git pushes new tags with an Actions `GITHUB_TOKEN`, add `--dispatch` and
+configure GitHub CLI with credentials permitted to dispatch in the fixture
+repository. Use that flag only when the push credential suppresses tag-triggered
+workflows. An ordinary Git push triggers `release.yml` automatically.
+
+### Inspect the report or resume verification
+
+The output path must be a new directory. The runner updates `report.json` as it
+collects evidence and writes `summary.txt` at exit. Each scenario records its
+version, tag, commit, trigger event, run URL and attempt, job results, failure
+diagnostics, artifact IDs, and before-and-after publication state. The command
+exits zero when all scenarios pass. Expect both negative scenarios to have
+a GitHub Actions conclusion of `failure`.
+
+The default wait is 30 minutes per scenario. If the runner times out or is
+interrupted, verify the attempted scenarios from the saved report.
+
+```sh
+python scripts/release_batch.py --resume ./batch-0.2.0/report.json --output ./batch-0.2.0-resumed
+```
+
+Resume uses the saved tag, commit, event, and trigger time to look up the original
+run. It verifies attempted scenarios and leaves new triggers to the operator.
+If the report shows a conflicting tag, a TestPyPI record, or a GitHub draft
+where the version was expected to be unused, inspect the saved state and the
+linked run before taking further action. Preserve the tags and published
+versions.
+
+### See example evidence
+
+- A successful nopt `0.2.0` source-pin run published `v0.1.2.dev11`.
+  The build bundle was artifact `15004766288` and the publication evidence was
+  artifact `15004087651`. The verifier compares their run identity and the
+  release asset hashes with the TestPyPI record. [Workflow run](https://github.com/nhairs/nopt-integration-test/actions/runs/45575913524)
+- A duplicate dispatch at `v0.1.2.dev11` failed in preflight with the
+  existing-version diagnostic. The TestPyPI files and GitHub assets matched
+  the baseline. [Duplicate run](https://github.com/nhairs/nopt-integration-test/actions/runs/45742922906)
+- The `v0.1.3.dev0` run uploaded a wheel and sdist to TestPyPI, then received
+  HTTP 403 from GitHub when creating the release. The original build artifact
+  `15081716698` matched the uploaded distributions. This is an example of a
+  failed batch with publication state to inspect. [Workflow run](https://github.com/nhairs/nopt-integration-test/actions/runs/45741613333)
+
+Run the fixture and batch tests locally with `uvx --with tox-uv tox -e py313`.
+The batch tests use mocked remote responses and local Git refs.
