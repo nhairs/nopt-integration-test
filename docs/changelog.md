@@ -1,8 +1,8 @@
 # Changelog
 
-## [1.0.1] - UNRELEASED
+## [1.0.1] - 2026-11-26
 
-- Verify maintenance-prerelease with nopt==0.2.0.
+- Verify maintenance-final with nopt==0.2.0.
 
 ## [1.0.0] - 2026-11-26
 
