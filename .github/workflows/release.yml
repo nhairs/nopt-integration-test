@@ -1,4 +1,4 @@
-# Keep the nopt version and action commit pins consistent across all jobs.
+# Read the nopt pin from the tested ref so candidate pins leave this workflow unchanged.
 name: Publish release
 on:
   push:
@@ -12,15 +12,26 @@ concurrency:
 jobs:
   preflight:
     runs-on: ubuntu-latest
+    outputs:
+      nopt_requirement: ${{ steps.pin.outputs.requirement }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
+      - id: pin
+        run: |
+          requirement=$(cat .nopt-requirement)
+          if [[ -z "$requirement" || "$requirement" == *$'\n'* ]]; then
+            echo "::error::.nopt-requirement must contain one requirement"
+            exit 1
+          fi
+          printf 'requirement=%s\n' "$requirement" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt ci-preflight
+      - run: uvx --from "$NOPT_REQUIREMENT" nopt ci-preflight
         env:
           GH_TOKEN: ${{ github.token }}
+          NOPT_REQUIREMENT: ${{ steps.pin.outputs.requirement }}
   ci:
     needs: preflight
     uses: ./.github/workflows/test.yml
@@ -36,9 +47,10 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - id: build
-        run: uvx --from 'nopt==0.1.0.dev0' nopt build --output "$RUNNER_TEMP/release-bundle"
+        run: uvx --from "$NOPT_REQUIREMENT" nopt build --output "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
+          NOPT_REQUIREMENT: ${{ needs.preflight.outputs.nopt_requirement }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         id: bundle
         with:
@@ -47,7 +59,7 @@ jobs:
           retention-days: 90
           if-no-files-found: error
   publish:
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
@@ -60,9 +72,10 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from "$NOPT_REQUIREMENT" nopt publish-release-preflight --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
+          NOPT_REQUIREMENT: ${{ needs.preflight.outputs.nopt_requirement }}
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: ${{ runner.temp }}/release-bundle/dist/
@@ -75,7 +88,7 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
   github-release:
-    needs: [build, publish]
+    needs: [preflight, build, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,6 +99,7 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
-      - run: uvx --from 'nopt==0.1.0.dev0' nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
+      - run: uvx --from "$NOPT_REQUIREMENT" nopt publish-github-release --bundle "$RUNNER_TEMP/release-bundle"
         env:
           GH_TOKEN: ${{ github.token }}
+          NOPT_REQUIREMENT: ${{ needs.preflight.outputs.nopt_requirement }}
