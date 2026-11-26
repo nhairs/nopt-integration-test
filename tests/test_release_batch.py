@@ -72,6 +72,35 @@ def test_select_run_requires_all_identity_fields():
         batch.select_run([*others, run, dict(run, html_url=run["html_url"] + "2")], scenario)
 
 
+def test_resume_records_rerun_without_replacing_original_attempt(monkeypatch):
+    recorded = {"id": 1, "run_attempt": 1}
+    scenario = {
+        "tag": "v2.0.1",
+        "commit": "a" * 40,
+        "event": "push",
+        "triggered_at": "2026-11-26T00:00:00Z",
+        "run": recorded,
+    }
+    rerun = {
+        "id": 1,
+        "run_attempt": 2,
+        "head_branch": scenario["tag"],
+        "head_sha": scenario["commit"],
+        "event": scenario["event"],
+        "created_at": scenario["triggered_at"],
+        "html_url": "https://github.com/example/runs/1",
+        "status": "completed",
+        "conclusion": "success",
+    }
+    monkeypatch.setattr(batch, "page_items", Mock(return_value=[rerun]))
+    save = Mock()
+    with pytest.raises(batch.BatchError, match="original workflow attempt"):
+        batch.wait_for_run(scenario, 5, save)
+    assert scenario["run"] is recorded
+    assert scenario["unexpected_run_attempt"]["run_attempt"] == 2
+    save.assert_called_once()
+
+
 def test_success_requires_all_eight_jobs():
     jobs = [
         {"name": name, "conclusion": "success"}

@@ -294,9 +294,12 @@ def wait_for_run(scenario, timeout, save):
                 "run" not in scenario or scenario["run"]["id"] == details["id"],
                 "Run identity changed during verification",
             )
+            if details["run_attempt"] != 1:
+                scenario["unexpected_run_attempt"] = details
+                save()
+                raise BatchError("Expected the original workflow attempt")
             scenario["run"] = details
             save()
-            require(run["run_attempt"] == 1, "Expected the original workflow attempt")
             if run["status"] == "completed":
                 return details
         time.sleep(max(0, min(10, deadline - time.monotonic())))
