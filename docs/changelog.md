@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.0] - 2026-11-26
+
+- Verify new-major-final with nopt==0.2.0.
+
 ## [1.0.0] - 2026-11-26
 
 - Verify first-final with nopt==0.2.0.
