@@ -91,6 +91,26 @@ versions.
 
 ### See example evidence
 
+The default suite with nopt `0.2.0` published two major finals, a maintenance
+prerelease, and a maintenance final. The reports for the successful scenarios
+include the TestPyPI and GitHub asset hashes, the build manifest checksum, and
+the two Actions artifact IDs.
+
+| Scenario | Observed outcome | Workflow run |
+| --- | --- | --- |
+| First final | `v1.0.0` became GitHub Latest. | [First final](https://github.com/nhairs/nopt-integration-test/actions/runs/45747590311) |
+| New major final | `v2.0.0` became GitHub Latest. | [New major final](https://github.com/nhairs/nopt-integration-test/actions/runs/45748169147) |
+| Maintenance prerelease | `v1.0.1rc1` published from `release/1.x`. `v2.0.0` stayed Latest. | [Maintenance prerelease](https://github.com/nhairs/nopt-integration-test/actions/runs/45748630004) |
+| Maintenance final | `v1.0.1` published from `release/1.x`. `v2.0.0` stayed Latest. | [Maintenance final](https://github.com/nhairs/nopt-integration-test/actions/runs/45749145487) |
+| Missing changelog | Preflight rejected `v1.0.2`. TestPyPI returned HTTP 404 and GitHub listed zero releases or drafts for the tag. | [Missing changelog](https://github.com/nhairs/nopt-integration-test/actions/runs/45749770215) |
+| Duplicate version | Preflight rejected a dispatch at `v2.0.0`. TestPyPI hashes and GitHub release and asset IDs and hashes matched the original release. | [Duplicate version](https://github.com/nhairs/nopt-integration-test/actions/runs/45749820461) |
+
+The dev suite with the same pin exercised publication, a missing changelog, and
+a duplicate dispatch against its own successful release. [Successful dev run](https://github.com/nhairs/nopt-integration-test/actions/runs/45746931381) · [Missing changelog](https://github.com/nhairs/nopt-integration-test/actions/runs/45747482937) · [Duplicate version](https://github.com/nhairs/nopt-integration-test/actions/runs/45747511375)
+
+Earlier runs show source-pin verification and what a partial publication looks
+like in the report.
+
 - A successful nopt `0.2.0` source-pin run published `v0.1.2.dev11`.
   The build bundle was artifact `15004766288` and the publication evidence was
   artifact `15004087651`. The verifier compares their run identity and the
